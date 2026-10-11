@@ -13,7 +13,7 @@
 1. 登录 GitHub，打开 <https://github.com/new>。
 2. Repository name 可填写 `LifeAgent`。
 3. Visibility 必须选择 **Private**。
-4. 不要勾选 README、`.gitignore` 或 License 初始化选项；本地仓库已经包含这些内容和提交历史。
+4. 不要勾选 README、`.gitignore` 或 License 初始化选项，以免产生冲突的初始提交。本地仓库已有 README、`.gitignore` 和提交历史，并刻意不包含 LICENSE 文件。
 5. 创建仓库后复制 GitHub 显示的 HTTPS 或 SSH 地址。
 
 ## 2. 首次关联并推送远程仓库
