@@ -7,7 +7,7 @@ import type {
   TaskCompletionStatus,
   TaskPriority,
 } from '../domain/models'
-import { toDateKey } from '../utils/date'
+import { isValidDateKey, toDateKey } from '../utils/date'
 
 const newId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 
@@ -15,10 +15,6 @@ function requiredText(value: string, field: string): string {
   const cleaned = value.trim()
   if (!cleaned) throw new Error(`${field}不能为空`)
   return cleaned
-}
-
-function validDateKey(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T12:00:00`).getTime())
 }
 
 export type TaskInput = {
@@ -29,7 +25,7 @@ export type TaskInput = {
 }
 
 export async function createTask(input: TaskInput, database = defaultDb): Promise<Task> {
-  if (!validDateKey(input.plannedDate)) throw new Error('计划日期无效')
+  if (!isValidDateKey(input.plannedDate)) throw new Error('计划日期无效')
   const now = new Date().toISOString()
   const task: Task = {
     id: newId(),
@@ -50,7 +46,7 @@ export async function updateTask(
   input: TaskInput,
   database = defaultDb,
 ): Promise<void> {
-  if (!validDateKey(input.plannedDate)) throw new Error('计划日期无效')
+  if (!isValidDateKey(input.plannedDate)) throw new Error('计划日期无效')
   const changed = await database.tasks.update(id, {
     plannedDate: input.plannedDate,
     title: requiredText(input.title, '任务名称'),

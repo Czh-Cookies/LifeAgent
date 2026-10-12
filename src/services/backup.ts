@@ -1,5 +1,8 @@
 import { db as defaultDb } from '../db/database'
 import type { Activity, BackupFile, Task, TaskActivityLink } from '../domain/models'
+import { isValidDateKey } from '../utils/date'
+
+export const LAST_BACKUP_EXPORT_KEY = 'lifeagent:last-backup-export-at:v1'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -8,14 +11,12 @@ const isString = (value: unknown): value is string => typeof value === 'string'
 const isIso = (value: unknown): value is string => isString(value) && !Number.isNaN(Date.parse(value))
 const isOptionalString = (value: unknown): value is string | undefined => value === undefined || isString(value)
 const isOptionalIso = (value: unknown): value is string | undefined => value === undefined || isIso(value)
-const isDateKey = (value: unknown): value is string =>
-  isString(value) && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00`))
 
 function isTask(value: unknown): value is Task {
   if (!isRecord(value)) return false
   return (
     isString(value.id) &&
-    isDateKey(value.plannedDate) &&
+    isValidDateKey(value.plannedDate) &&
     isString(value.title) && value.title.trim().length > 0 &&
     isOptionalString(value.details) &&
     (value.priority === undefined || ['low', 'medium', 'high'].includes(String(value.priority))) &&
@@ -28,7 +29,7 @@ function isTask(value: unknown): value is Task {
 function isActivity(value: unknown): value is Activity {
   if (!isRecord(value)) return false
   return (
-    isString(value.id) && isDateKey(value.activityDate) &&
+    isString(value.id) && isValidDateKey(value.activityDate) &&
     isIso(value.startAt) && isIso(value.endAt) &&
     new Date(value.endAt).getTime() > new Date(value.startAt).getTime() &&
     isString(value.content) && value.content.trim().length > 0 &&
@@ -86,6 +87,33 @@ export async function exportBackup(database = defaultDb): Promise<BackupFile> {
     exportedAt: new Date().toISOString(),
     data: { tasks, activities, links },
   }
+}
+
+export function getLastBackupExportAt(): string | undefined {
+  try {
+    const value = globalThis.localStorage?.getItem(LAST_BACKUP_EXPORT_KEY) ?? undefined
+    return isIso(value) ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function recordBackupExportAt(exportedAt: string): void {
+  if (!isIso(exportedAt)) throw new Error('备份导出时间无效')
+  try {
+    globalThis.localStorage?.setItem(LAST_BACKUP_EXPORT_KEY, exportedAt)
+  } catch {
+    // This timestamp is only reminder metadata; backup generation must still succeed.
+  }
+}
+
+export async function getLocalDataCounts(database = defaultDb): Promise<{ tasks: number; activities: number; links: number }> {
+  const [tasks, activities, links] = await Promise.all([
+    database.tasks.count(),
+    database.activities.count(),
+    database.taskActivityLinks.count(),
+  ])
+  return { tasks, activities, links }
 }
 
 export async function restoreBackup(backup: BackupFile, database = defaultDb): Promise<void> {

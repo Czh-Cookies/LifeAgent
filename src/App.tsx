@@ -3,6 +3,7 @@ import { ActivityPage } from './pages/ActivityPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { PlanPage } from './pages/PlanPage'
 import { BackupPanel } from './components/BackupPanel'
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt'
 
 type Page = 'overview' | 'plan' | 'activity'
 
@@ -36,6 +37,7 @@ export default function App() {
           </button>
         ))}
       </nav>
+      <PwaUpdatePrompt />
     </div>
   )
 }

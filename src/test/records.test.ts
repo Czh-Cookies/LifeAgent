@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { db as appDb, LifeAgentDatabase } from '../db/database'
@@ -15,7 +15,14 @@ import {
   updateActivity,
   updateTask,
 } from '../services/records'
-import { exportBackup, parseBackup, restoreBackup } from '../services/backup'
+import {
+  exportBackup,
+  getLastBackupExportAt,
+  parseBackup,
+  recordBackupExportAt,
+  restoreBackup,
+} from '../services/backup'
+import { getStoragePersistenceStatus, requestStoragePersistence } from '../services/storagePersistence'
 
 let db: LifeAgentDatabase
 let databaseName: string
@@ -116,6 +123,72 @@ describe('persistence and backup', () => {
     expect(() => parseBackup('{oops')).toThrow('有效的 JSON')
     expect(() => parseBackup(JSON.stringify({ app: 'LifeAgent', formatVersion: 99, data: {} }))).toThrow('版本 1')
     expect(await db.tasks.count()).toBe(1)
+  })
+
+  it('restores the same backup repeatedly without duplicating records or links', async () => {
+    const task = await createTask({ plannedDate: '2026-10-12', title: '可重复恢复' }, db)
+    await createActivity({
+      startAt: '2026-10-12T08:00',
+      endAt: '2026-10-12T09:00',
+      content: '关联活动',
+      taskIds: [task.id],
+    }, db)
+    const backup = await exportBackup(db)
+
+    await restoreBackup(backup, db)
+    await restoreBackup(backup, db)
+
+    expect(await db.tasks.count()).toBe(1)
+    expect(await db.activities.count()).toBe(1)
+    expect(await db.taskActivityLinks.count()).toBe(1)
+  })
+
+  it('rolls back every table when restore fails after clearing current data', async () => {
+    const original = await createTask({ plannedDate: '2026-10-12', title: '必须保留' }, db)
+    const backup = await exportBackup(db)
+    backup.data.tasks[0] = { ...backup.data.tasks[0], id: 'replacement', title: '替换内容' }
+    vi.spyOn(db.activities, 'bulkAdd').mockRejectedValueOnce(new Error('模拟写入失败'))
+
+    await expect(restoreBackup(backup, db)).rejects.toThrow('模拟写入失败')
+
+    expect(await db.tasks.get(original.id)).toMatchObject({ title: '必须保留' })
+    expect(await db.tasks.get('replacement')).toBeUndefined()
+  })
+
+  it('rejects impossible calendar dates in records and backups', async () => {
+    await expect(createTask({ plannedDate: '2026-02-30', title: '无效日期' }, db)).rejects.toThrow('日期无效')
+    const task = await createTask({ plannedDate: '2026-02-28', title: '有效日期' }, db)
+    const backup = await exportBackup(db)
+    backup.data.tasks = [{ ...task, plannedDate: '2026-02-30' }]
+    expect(() => parseBackup(JSON.stringify(backup))).toThrow('结构或字段无效')
+  })
+
+  it('stores export reminder metadata without putting records in localStorage', () => {
+    localStorage.clear()
+    const exportedAt = '2026-10-12T12:34:56.000Z'
+    recordBackupExportAt(exportedAt)
+    expect(getLastBackupExportAt()).toBe(exportedAt)
+    expect(localStorage.length).toBe(1)
+    expect(localStorage.getItem('lifeagent:last-backup-export-at:v1')).toBe(exportedAt)
+  })
+})
+
+describe('browser storage persistence', () => {
+  it('reports unsupported and best-effort storage without overstating persistence', async () => {
+    expect(await getStoragePersistenceStatus(undefined)).toBe('unsupported')
+    expect(await getStoragePersistenceStatus({
+      persisted: vi.fn().mockResolvedValue(false),
+      persist: vi.fn().mockResolvedValue(false),
+    })).toBe('best-effort')
+  })
+
+  it('requests persistence and reports the browser decision', async () => {
+    const storage = {
+      persisted: vi.fn().mockResolvedValue(false),
+      persist: vi.fn().mockResolvedValue(true),
+    }
+    expect(await requestStoragePersistence(storage)).toBe('persistent')
+    expect(storage.persist).toHaveBeenCalledOnce()
   })
 })
 

@@ -22,7 +22,7 @@ export function DateNavigator({ value, onChange, defaultDate, defaultLabel }: Pr
       <button className="icon-button" onClick={() => move(-1)} aria-label="前一天">←</button>
       <label className="date-picker">
         <span>{dateLabel(value)}</span>
-        <input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+        <input aria-label="选择日期" type="date" value={value} onChange={(event) => onChange(event.target.value)} />
       </label>
       <button className="icon-button" onClick={() => move(1)} aria-label="后一天">→</button>
       {value !== defaultDate && (
